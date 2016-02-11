@@ -116,8 +116,8 @@ public class Params {
       double g = entry.getValue();
       if (g * g == 0) continue;  // In order to not divide by zero
 
-      if (l1Reg == L1Reg.LAZY) lazyL1Update(f);
-      double stepSize = computeStepSize(f, g);
+      if (l1Reg == L1Reg.LAZY) lazyL1Update(f); // myahya: 
+      double stepSize = computeStepSize(f, g); // myahya: computes step size, g is a gradient
 
       if (opts.dualAveraging) {
         if (!opts.adaptiveStepSize && opts.stepSizeReduction != 0)
@@ -125,7 +125,7 @@ public class Params {
                   "step-size changes across iterations for " +
                   "features for which the gradient is zero");
         MapUtils.incr(sumGradients, f, g);
-        MapUtils.set(weights, f, stepSize * sumGradients.get(f));
+        MapUtils.set(weights, f, stepSize * sumGradients.get(f)); // myahya: set weight
       } else {
         if (stepSize * g == Double.POSITIVE_INFINITY || stepSize * g == Double.NEGATIVE_INFINITY) {
           LogInfo.logs("WEIRD FEATURE UPDATE: feature=%s, currentWeight=%s, stepSize=%s, gradient=%s", f, getWeight(f), stepSize, g);
@@ -136,19 +136,19 @@ public class Params {
       }
     }
     // non lazy implementation goes over all weights
-    if (l1Reg == L1Reg.NONLAZY) {
+    if (l1Reg == L1Reg.NONLAZY) {  // myahya: why have this when lazy is possible?
       Set<String> features = new HashSet<String>(weights.keySet());
       for (String f : features) {
         double stepSize = computeStepSize(f, 0d); // no update for gradient here
         double update = opts.l1RegCoeff * -Math.signum(MapUtils.getDouble(weights, f, opts.defaultWeight));
-        clipUpdate(f, stepSize * update);
+        clipUpdate(f, stepSize * update); // myahya: update feature weight, remove feature if update changes sign
       }
     }
     numUpdates++;
     if (l1Reg == L1Reg.LAZY && opts.lazyL1FullUpdateFreq > 0 && numUpdates % opts.lazyL1FullUpdateFreq == 0) {
       LogInfo.begin_track("Fully apply L1 regularization.");
       finalizeWeights();
-      System.gc();
+      System.gc(); // myahya: WHAT!
       LogInfo.end_track();
     }
   }
@@ -175,31 +175,32 @@ public class Params {
       return;
 
     if (currWeight * (currWeight + update) < 0.0)  {
-      weights.remove(f);
+      weights.remove(f); // myahya: trick?
     } else {
       MapUtils.incr(weights, f, update);
     }
   }
 
+  // myahya: each feature has a last update time.
   private void lazyL1Update(String f) {
     if (MapUtils.getDouble(weights, f, 0.0) == 0) return;
     // For pre-initialized weights, which have no updates yet
     if (sumSquaredGradients.get(f) == null || l1UpdateTimeMap.get(f) == null) {
-      l1UpdateTimeMap.put(f, numUpdates);
+      l1UpdateTimeMap.put(f, numUpdates); // myahya: last update time of feature.
       sumSquaredGradients.put(f, 0.0);
       return;
     }
-    int numOfIter = numUpdates - MapUtils.get(l1UpdateTimeMap, f, 0);
+    int numOfIter = numUpdates - MapUtils.get(l1UpdateTimeMap, f, 0); // myahya: how long ago was this updated
     if (numOfIter == 0) return;
     if (numOfIter < 0) throw new RuntimeException("l1UpdateTimeMap is out of sync.");
 
-    double stepSize = (numOfIter * opts.initStepSize) / (Math.sqrt(sumSquaredGradients.get(f) + 1));
-    double update = -opts.l1RegCoeff * Math.signum(MapUtils.getDouble(weights, f, 0.0));
+    double stepSize = (numOfIter * opts.initStepSize) / (Math.sqrt(sumSquaredGradients.get(f) + 1)); // myahya: adaptive effective stepsize
+    double update = -opts.l1RegCoeff * Math.signum(MapUtils.getDouble(weights, f, 0.0)); // myahya: regularization here
     clipUpdate(f, stepSize * update);
     if (weights.containsKey(f))
       l1UpdateTimeMap.put(f, numUpdates);
     else
-      l1UpdateTimeMap.remove(f);
+      l1UpdateTimeMap.remove(f); // myahya: in case clipUpdate has removed feature
   }
 
   public synchronized double getWeight(String f) {
